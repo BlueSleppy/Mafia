@@ -19,7 +19,11 @@ public class RJ45CablePhysics : MonoBehaviour
     public int solverVelocityIterations = 6;
     public float maxDepenetrationVelocity = 1.5f;
 
-    void Awake()
+    private readonly Dictionary<Transform, Vector3> wireLocalPositions = new Dictionary<Transform, Vector3>();
+    private readonly Dictionary<Transform, Quaternion> wireLocalRotations = new Dictionary<Transform, Quaternion>();
+
+    
+void Awake()
     {
         var all = new List<Collider>(GetComponentsInChildren<Collider>(true));
         if (wiresRoot != null)
@@ -34,6 +38,12 @@ public class RJ45CablePhysics : MonoBehaviour
                 rb.maxDepenetrationVelocity = maxDepenetrationVelocity;
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
             }
+
+            foreach (Transform wire in wiresRoot)
+            {
+                wireLocalPositions[wire] = transform.InverseTransformPoint(wire.position);
+                wireLocalRotations[wire] = Quaternion.Inverse(transform.rotation) * wire.rotation;
+            }
         }
 
         for (int i = 0; i < all.Count; i++)
@@ -41,4 +51,42 @@ public class RJ45CablePhysics : MonoBehaviour
                 if (all[i] != null && all[j] != null)
                     Physics.IgnoreCollision(all[i], all[j], true);
     }
+
+void LateUpdate()
+    {
+        if (wiresRoot == null)
+            return;
+
+        foreach (Transform wire in wiresRoot)
+        {
+            var grab = wire.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+            var body = wire.GetComponent<Rigidbody>();
+            if (body == null)
+                continue;
+
+            if (grab != null && grab.isSelected)
+            {
+                // Store the moved wire relative to the jacket so it stays where the hand leaves it.
+                wireLocalPositions[wire] = transform.InverseTransformPoint(wire.position);
+                wireLocalRotations[wire] = Quaternion.Inverse(transform.rotation) * wire.rotation;
+                continue;
+            }
+
+            if (!wireLocalPositions.TryGetValue(wire, out var localPosition))
+            {
+                localPosition = transform.InverseTransformPoint(wire.position);
+                wireLocalPositions[wire] = localPosition;
+            }
+            if (!wireLocalRotations.TryGetValue(wire, out var localRotation))
+            {
+                localRotation = Quaternion.Inverse(transform.rotation) * wire.rotation;
+                wireLocalRotations[wire] = localRotation;
+            }
+
+            // Keep each unheld kinematic wire Rigidbody synchronized with the moving jacket Rigidbody.
+            body.position = transform.TransformPoint(localPosition);
+            body.rotation = transform.rotation * localRotation;
+        }
+    }
+
 }
