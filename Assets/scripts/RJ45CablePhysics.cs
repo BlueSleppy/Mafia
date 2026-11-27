@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit;
+
 
 /// <summary>
 /// Fizyka kabla RJ45: żyły są łańcuchami Rigidbody poza hierarchią kabla (wiresRoot).
@@ -23,6 +25,8 @@ public class RJ45CablePhysics : MonoBehaviour
     private readonly Dictionary<Transform, Quaternion> wireLocalRotations = new Dictionary<Transform, Quaternion>();
 
     
+    private readonly HashSet<Transform> pendingReleaseCapture = new HashSet<Transform>();
+
 void Awake()
     {
         var all = new List<Collider>(GetComponentsInChildren<Collider>(true));
@@ -51,6 +55,36 @@ void Awake()
                 if (all[i] != null && all[j] != null)
                     Physics.IgnoreCollision(all[i], all[j], true);
     }
+
+private void OnEnable()
+{
+    BindWireReleaseEvents(true);
+}
+
+private void OnDisable()
+{
+    BindWireReleaseEvents(false);
+}
+
+private void BindWireReleaseEvents(bool bind)
+{
+    if (wiresRoot == null) return;
+    foreach (Transform wire in wiresRoot)
+    {
+        var grab = wire.GetComponent<UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable>();
+        if (grab == null) continue;
+        if (bind) grab.selectExited.AddListener(OnWireSelectExited);
+        else grab.selectExited.RemoveListener(OnWireSelectExited);
+    }
+}
+
+private void OnWireSelectExited(SelectExitEventArgs args)
+{
+    var grab = args.interactableObject as UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable;
+    if (grab != null)
+        pendingReleaseCapture.Add(grab.transform);
+}
+
 
 void LateUpdate()
     {
